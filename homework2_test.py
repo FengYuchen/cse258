@@ -10,10 +10,11 @@ from math import log
 from operator import itemgetter, attrgetter
 from sklearn.decomposition import PCA
 from collections import defaultdict
+from sklearn.linear_model import LinearRegression
 random.seed(0)
 
 
-np.random.seed(0)
+##np.random.seed(0)
 def parseData(fname):
     for l in urllib.urlopen(fname):
         yield eval(l)
@@ -26,10 +27,12 @@ fields = ["constant"] + header.strip().replace('"', '').split(';')
 featureNames = fields[:-1]
 labelName = fields[-1]
 lines = [[1.0] + [float(x) for x in l.split(';')] for l in dataFile]
-random.shuffle(lines)
+##np.random.shuffle(lines)
 X = [l[:-1] for l in lines]
 y = [l[-1] > 5 for l in lines]
-sy = [l[-1] for l in lines]
+X1 = [l[1:-1] for l in lines]
+y1 = [l[-1] for l in lines]
+
 print "done"
 
 
@@ -82,6 +85,12 @@ X_test = X[int(2 * len(X) / 3):]
 y_test = y[int(2 * len(X) / 3):]
 
 
+X_train1 = X1[:int(len(X1) / 3)]
+y_train1 = y1[:int(len(y1) / 3)]
+X_validate1 = X1[int(len(X1) / 3):int(2 * len(X1) / 3)]
+y_validate1 = y1[int(len(y1) / 3):int(2 * len(y1) / 3)]
+X_test1 = X1[int(2 * len(X1) / 3):]
+y_test1 = y1[int(2 * len(X1) / 3):]
 ##################################################
 # Train                                          #
 ##################################################
@@ -112,11 +121,13 @@ def performance(theta):
     acc_validate = sum(correct_validate) * 1.0 / len(correct_validate)
     acc_test = sum(correct_test) * 1.0 / len(correct_test)
     return acc_train, acc_validate, acc_test
+print("Task1:")
+for lam in [0, 0.01, 1.0, 100.0]:
+  theta = train(lam)
+  acc_train, acc_validate, acc_test = performance(theta)
+  print("lambda = " + str(lam) + ";\ttrain=" + str(acc_train) + "; validate=" + str(acc_validate) + "; test=" + str(acc_test))
 lam = 0.01
 theta = train(lam)
-acc_train, acc_validate, acc_test = performance(theta)
-print("lambda = " + str(lam) + ";\ttrain=" + str(acc_train) + "; validate=" + str(acc_validate) + "; test=" + str(acc_test))
-
 ##################################################
 # true positives, true negatives, false positives#
 # , false negatives, and the Balanced Error Rate.#
@@ -220,7 +231,7 @@ def drawpic(theta,_X,_Y):
     T.append(rankdata(_X[k], _Y[k]))
   T = sorted(T, key=itemgetter(0), reverse=True)
 
-
+  print "drawpic" + str(len(T))
   allrelevant = 0
   for yy in _Y:
     if yy:
@@ -232,13 +243,15 @@ def drawpic(theta,_X,_Y):
   relevant = 0
   print ll
   for i in range(0, ll, 1):
+
     a, b = T[i].get()
-    if a > 0 and b == True:
+    if b == True:
       relevant = relevant + 1
     xx = relevant * 1.0 / (i + 1)
     l_x.append(xx)
-    yy = relevant * 1.0 / allrelevant
+    yy = relevant * 1.0 / sum(_Y)
     l_y.append(yy)
+   ## print str(i) + " " + str(xx) + " " + str(yy)
   plt.plot(l_y,l_x)
   plt.xlabel("recall")
   plt.ylabel("precision")
@@ -275,7 +288,7 @@ PCA_Mean(X_train)
 _X = []
 for t in X_train:
   _X.append(t[1:])
-pca = PCA(n_components=5)
+pca = PCA(n_components=11)
 pca.fit(_X)
 print "5 parameters: "
 print pca.components_
@@ -286,21 +299,13 @@ print pca.components_
 _X = []
 for t in X_train:
   _X.append(t[1:])
-
-n = 4
 pca = PCA(n_components=4)
 pca.fit(_X)
-trans0 = pca.components_
-trans0 = np.matrix(trans0)
-
-_x = np.matrix(_X).T
-_y = trans0 * _x
-print _y.size
-_yy = trans0.T * _y
-print _yy.size
-tmp = np.subtract(_yy.A1, _x.A1)
-tmp = tmp ** 2
-
+x_mean = (np.sum(_X, axis=0))/len(_X)
+x_train = pca.transform(_X)
+x_train = np.dot(x_train, pca.components_)
+x_train = x_train + x_mean
+tmp = (_X-x_train)**2
 
 
 print "reconstruction error for 4 dimensions: " + str(np.sum(tmp))
@@ -308,24 +313,17 @@ print "reconstruction error for 4 dimensions: " + str(np.sum(tmp))
 ##################################################
 # PCA_4                                          #
 ##################################################
-y = sy[:int(len(sy) / 3)]
-X=[]
-_y = np.matrix(y)
-for i in range(0,len(X_train), 1):
-  X.append([1])
 for i in range(1, 12, 1):
-  pca = PCA(n_components=i)
-  pca.fit(X_train)
-  trans0 = pca.components_
-  trans0 = np.matrix(trans0)
-  XX = trans0 * (np.matrix(X_train).T)
-  XX = np.column_stack((X, XX.T))
+    pca = PCA(n_components=i)
+    pca.fit(X_train1)
+    x_train = pca.transform(X_train1)
+    x_train = [np.insert(x, 0, 1.0) for x in x_train]
 
-  thetas = np.linalg.inv(XX.T * XX) * XX.T * _y.T
-  predict = (XX * thetas).T
-#0.492429542035
-  sub = np.subtract(predict.A1, _y.A1)
-  sub = sub ** 2
-  print "MSE with " + str(i) +" dimensions: "+ str( sum(sub)/len(sub))
+    lr = LinearRegression()
+    lr.fit(x_train, y_train1)
+    x_test = pca.transform(X_test1)
+    x_test = [np.insert(x, 0, 1.0) for x in x_test]
+    prediction = lr.predict(x_test)
+    print "MSE with " + str(i) + " dimensions: "+str((np.linalg.norm(prediction - y_test1) ** 2) / len(y_test1))
 
 
